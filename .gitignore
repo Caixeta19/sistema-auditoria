@@ -1,0 +1,8 @@
+__pycache__/ 
+*.pyc 
+build/ 
+dist/ 
+*.spec 
+token.json 
+sistemaauditoria*.json 
+oauth_client*.json 
