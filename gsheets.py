@@ -3,72 +3,88 @@ import os
 import sys
 import time
 import tkinter.messagebox as messagebox
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
 
 if getattr(sys, 'frozen', False):
     DIR_ATUAL = os.path.dirname(sys.executable)
 else:
     DIR_ATUAL = os.path.dirname(__file__)
 
-ARQUIVO_JSON = os.path.join(DIR_ATUAL, "sistemaauditoria-492914-84a65a922a10.json")
+ARQUIVO_OAUTH = os.path.join(DIR_ATUAL, "oauth_client.json")
+ARQUIVO_TOKEN = os.path.join(DIR_ATUAL, "token.json")
 
-# E-mails que receberão acesso de editor em cada planilha criada.
-# Adicione ou remova e-mails conforme necessário.
 EMAILS_EDITORES = [
-    "email1@gmail.com",   # <- substitua pelos e-mails reais
-    "email2@gmail.com",
-    "email3@gmail.com",
+    "auxiliar.auditoriaa03@gmail.com",
+    "auxiliar.auditoriaa02@gmail.com",
+    "auxiliar.auditoriaa04@gmail.com",
 ]
 
 CABECALHO = ["Status", "Serial", "Nome", "Loja", "Data e Hora", "Origem", "Nº Auditoria"]
 
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
 # ── Conexão e cache ───────────────────────────────────────────────────────────
 _gc = None
-_planilhas_cache: dict[str, gspread.Spreadsheet] = {}  # nome_loja → Spreadsheet
+_planilhas_cache: dict[str, gspread.Spreadsheet] = {}
 
 
 def _get_gc() -> gspread.Client:
     global _gc
-    if _gc is None:
-        _gc = gspread.service_account(filename=ARQUIVO_JSON)
+    if _gc is not None:
+        return _gc
+
+    creds = None
+
+    if os.path.exists(ARQUIVO_TOKEN):
+        creds = Credentials.from_authorized_user_file(ARQUIVO_TOKEN, SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(ARQUIVO_OAUTH, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open(ARQUIVO_TOKEN, "w") as f:
+            f.write(creds.to_json())
+
+    _gc = gspread.authorize(creds)
     return _gc
 
 
 def _get_planilha_loja(loja: str) -> gspread.Worksheet:
-    """
-    Retorna a sheet1 da planilha da loja.
-    Se a planilha não existir, cria e compartilha com EMAIL_DONO.
-    Usa cache em memória — a API só é chamada na primeira vez por loja.
-    Compartilha com todos os e-mails de EMAILS_EDITORES ao criar.
-    """
-    nome = loja.strip()[:100]
-    titulo = f"Auditoria — {nome}"   # ex: "Auditoria — TO - GURUPI"
+    nome   = loja.strip()[:100]
+    titulo = f"Auditoria — {nome}"
 
     if nome in _planilhas_cache:
         return _planilhas_cache[nome].sheet1
 
     gc = _get_gc()
 
-    # Tenta abrir planilha existente pelo título
     try:
         planilha = gc.open(titulo)
         print(f"[Sheets] Planilha existente: '{titulo}'")
     except gspread.exceptions.SpreadsheetNotFound:
-        # Cria a planilha nova
         planilha = gc.create(titulo)
 
-        # Compartilha com todos os e-mails da lista como editores
         for email in EMAILS_EDITORES:
-            planilha.share(email, perm_type="user", role="writer", notify=False)
+            try:
+                planilha.share(email, perm_type="user", role="writer", notify=False)
+            except Exception as e:
+                print(f"[Sheets] Não compartilhou com {email}: {e}")
 
-        # Formata o cabeçalho na primeira aba
         ws = planilha.sheet1
-        ws.update_title(nome)                              # renomeia a aba
+        ws.update_title(nome)
         ws.append_row(CABECALHO, value_input_option="RAW")
         ws.format("A1:G1", {
             "textFormat": {"bold": True},
             "backgroundColor": {"red": 0.88, "green": 0.88, "blue": 0.88}
         })
-        print(f"[Sheets] Planilha criada e compartilhada: '{titulo}'")
+        print(f"[Sheets] Planilha criada: '{titulo}'")
 
     _planilhas_cache[nome] = planilha
     return planilha.sheet1
@@ -79,7 +95,7 @@ def registrar_bipagem(serial: str, status: str, horario: str, loja: str,
 
     loja_limpa = loja.strip()
     if not loja_limpa or loja_limpa.upper() in ("TODAS AS LOJAS", "LOJA NÃO IDENTIFICADA", "N/A"):
-        print(f"[Sheets] Ignorado — nenhuma loja selecionada no filtro.")
+        print(f"[Sheets] Ignorado — nenhuma loja selecionada.")
         return
 
     status_legivel = {
@@ -99,7 +115,7 @@ def registrar_bipagem(serial: str, status: str, horario: str, loja: str,
         except gspread.exceptions.APIError as e:
             if e.response.status_code == 429:
                 espera = 2 ** tentativa
-                print(f"[Quota] Aguardando {espera}s antes de tentar novamente...")
+                print(f"[Quota] Aguardando {espera}s...")
                 time.sleep(espera)
             else:
                 messagebox.showerror(
