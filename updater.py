@@ -21,7 +21,7 @@ import tkinter.messagebox as messagebox
 
 GITHUB_USUARIO = "Caixeta19"
 GITHUB_REPO    = "sistema-auditoria"
-NOME_EXE       = "Sistema de Auditoria.exe"
+NOME_EXE       = "SistemaAuditoria.exe"
 
 API_URL = f"https://api.github.com/repos/{GITHUB_USUARIO}/{GITHUB_REPO}/releases/latest"
 
