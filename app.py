@@ -11,10 +11,11 @@ import db
 import relatorio as rel
 import gsheets
 import lote as lote_mod
+import updater
 
 # ==============================================================================
 # VERSÃO DO SISTEMA (Altere aqui toda vez que for gerar um .exe novo)
-VERSAO_SISTEMA = "1.2"
+VERSAO_SISTEMA = "1.3"
 # ==============================================================================
 
 COR_FUNDO      = "#1e1e1e"
@@ -31,7 +32,7 @@ ICONE_OK      = "✅"
 ICONE_NAO     = "❌"
 ICONE_BIPANDO = "⏳"
 
-PREFIXOS_NUMERICOS_INVALIDOS = ("79", "78", "2202", "080","00")
+PREFIXOS_NUMERICOS_INVALIDOS = ("79", "78", "2202", "080","00","01", "02", "03", "04", "05", "06", "07", "08", "09","48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69")
 
 
 class App(tk.Tk):
@@ -65,6 +66,7 @@ class App(tk.Tk):
         self._construir_ui()
         self.after(100, self._carregar_seriais)
         self.after(200, lambda: self.entry_serial.focus_set())
+        updater.verificar_atualizacao(VERSAO_SISTEMA, self)
 
         
     def centralizar_janela(self, largura=1150, altura=660):
@@ -404,7 +406,6 @@ class App(tk.Tk):
         return False
 
     def _resultado_codigo_errado(self, serial: str):
-        """Exibe aviso de código inválido sem registrar em lugar nenhum."""
         serial_ecra = serial[:4] + "****" if len(serial) > 4 else serial
 
         self.frame_resultado.configure(bg="#7a0000")
@@ -427,7 +428,7 @@ class App(tk.Tk):
             self.after(0, self._resetar_painel)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BIPAGEM MANUAL (serial único)
+    # BIPAGEM MANUAL
     # ──────────────────────────────────────────────────────────────────────────
 
     def _on_bipar(self, event=None):
@@ -480,9 +481,7 @@ class App(tk.Tk):
     def _exibir_processando(self, serial: str):
         self.frame_resultado.configure(bg="#2b2b2b")
         self.lbl_icone_res.configure(bg="#2b2b2b", text=ICONE_BIPANDO)
-
         serial_oculto = serial[:4] + "****" if len(serial) > 4 else serial
-
         self.lbl_serial_res.configure(bg="#2b2b2b", fg="#ffffff", text=serial_oculto)
         self.lbl_msg_res.configure(bg="#2b2b2b", fg=COR_CINZA, text="Consultando...")
 
@@ -515,7 +514,6 @@ class App(tk.Tk):
             "erro":           ("#4a0080", COR_ROXO,     "💥"),
         }
         bg, fg, icone = cores.get(resultado, cores["erro"])
-
         serial_ecra = serial[:4] + "****" if len(serial) > 4 else serial
 
         self.frame_resultado.configure(bg=bg)
@@ -573,7 +571,7 @@ class App(tk.Tk):
             self.after(3000, self._resetar_painel)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # BIPAGEM EM LOTE (Com Chips e Recargas)
+    # BIPAGEM EM LOTE
     # ──────────────────────────────────────────────────────────────────────────
 
     def _abrir_lote(self):
@@ -601,7 +599,6 @@ class App(tk.Tk):
 
         tk.Frame(win, bg="#444444", height=1).pack(fill="x", padx=20, pady=10)
 
-        # --- SELEÇÃO DE TIPO DE LOTE ---
         frame_tipo = tk.Frame(win, bg=COR_FUNDO)
         frame_tipo.pack(fill="x", padx=30, pady=5)
 
@@ -610,21 +607,15 @@ class App(tk.Tk):
 
         var_tipo_lote = tk.StringVar(value="chip")
 
-        rb_chip = tk.Radiobutton(
-            frame_tipo, text="Chips (Luhn)", variable=var_tipo_lote, value="chip",
-            bg=COR_FUNDO, fg=COR_TEXTO, selectcolor=COR_FUNDO_ITEM,
-            activebackground=COR_FUNDO, activeforeground="#ffffff",
-            font=("Segoe UI", 9)
-        )
-        rb_chip.pack(side="left", padx=10)
+        tk.Radiobutton(frame_tipo, text="Chips (Luhn)", variable=var_tipo_lote, value="chip",
+                       bg=COR_FUNDO, fg=COR_TEXTO, selectcolor=COR_FUNDO_ITEM,
+                       activebackground=COR_FUNDO, activeforeground="#ffffff",
+                       font=("Segoe UI", 9)).pack(side="left", padx=10)
 
-        rb_recarga = tk.Radiobutton(
-            frame_tipo, text="Recargas", variable=var_tipo_lote, value="recarga",
-            bg=COR_FUNDO, fg=COR_TEXTO, selectcolor=COR_FUNDO_ITEM,
-            activebackground=COR_FUNDO, activeforeground="#ffffff",
-            font=("Segoe UI", 9)
-        )
-        rb_recarga.pack(side="left")
+        tk.Radiobutton(frame_tipo, text="Recargas", variable=var_tipo_lote, value="recarga",
+                       bg=COR_FUNDO, fg=COR_TEXTO, selectcolor=COR_FUNDO_ITEM,
+                       activebackground=COR_FUNDO, activeforeground="#ffffff",
+                       font=("Segoe UI", 9)).pack(side="left")
 
         def _campo(label_txt):
             fr = tk.Frame(win, bg=COR_FUNDO)
@@ -648,30 +639,18 @@ class App(tk.Tk):
         lbl_preview.pack(pady=(8, 0))
 
         def _atualizar_preview(*_):
-            p    = var_primeiro.get().strip()
-            u    = var_ultimo.get().strip()
-            tipo = var_tipo_lote.get()
-
+            p, u, tipo = var_primeiro.get().strip(), var_ultimo.get().strip(), var_tipo_lote.get()
             if not p or not u:
                 lbl_preview.configure(text="", fg=COR_CINZA)
                 return
             if self._prefixo_invalido(p) or self._prefixo_invalido(u):
-                lbl_preview.configure(
-                    text="⛔  Serial com prefixo inválido! Verifique o código bipado.",
-                    fg=COR_VERMELHO)
+                lbl_preview.configure(text="⛔  Serial com prefixo inválido!", fg=COR_VERMELHO)
                 return
-
-            if tipo == "chip":
-                seriais, erro = lote_mod.gerar_faixa(p, u)
-            else:
-                seriais, erro = lote_mod.gerar_faixa_recarga(p, u)
-
+            seriais, erro = lote_mod.gerar_faixa(p, u) if tipo == "chip" else lote_mod.gerar_faixa_recarga(p, u)
             if erro:
                 lbl_preview.configure(text=f"⚠  {erro}", fg=COR_VERMELHO)
             else:
-                lbl_preview.configure(
-                    text=f"✅  {len(seriais)} serial(is) gerado(s) — pronto para bipar.",
-                    fg=COR_VERDE)
+                lbl_preview.configure(text=f"✅  {len(seriais)} serial(is) gerado(s).", fg=COR_VERDE)
 
         var_primeiro.trace_add("write",  _atualizar_preview)
         var_ultimo.trace_add("write",    _atualizar_preview)
@@ -680,47 +659,26 @@ class App(tk.Tk):
         tk.Frame(win, bg="#444444", height=1).pack(fill="x", padx=20, pady=10)
 
         def _confirmar():
-            p    = var_primeiro.get().strip()
-            u    = var_ultimo.get().strip()
-            tipo = var_tipo_lote.get()
-
+            p, u, tipo = var_primeiro.get().strip(), var_ultimo.get().strip(), var_tipo_lote.get()
             if self._prefixo_invalido(p) or self._prefixo_invalido(u):
-                messagebox.showerror(
-                    "Código inválido",
-                    "Um ou mais seriais informados possuem prefixo inválido.\n"
-                    "Bipe o código de barras correto.",
-                    parent=win)
+                messagebox.showerror("Código inválido",
+                                     "Um ou mais seriais possuem prefixo inválido.", parent=win)
                 return
-
-            if tipo == "chip":
-                seriais, erro = lote_mod.gerar_faixa(p, u)
-            else:
-                seriais, erro = lote_mod.gerar_faixa_recarga(p, u)
-
+            seriais, erro = lote_mod.gerar_faixa(p, u) if tipo == "chip" else lote_mod.gerar_faixa_recarga(p, u)
             if erro:
                 messagebox.showerror("Erro na faixa", erro, parent=win)
                 return
-
-            resp = messagebox.askyesno(
-                "Confirmar lote",
-                f"Serão processados {len(seriais)} seriais de "
-                f"{'Chips' if tipo == 'chip' else 'Recargas'}.\nDeseja continuar?",
-                parent=win)
-            if not resp:
+            if not messagebox.askyesno("Confirmar lote",
+                                       f"Serão processados {len(seriais)} seriais.\nDeseja continuar?",
+                                       parent=win):
                 return
-
             win.destroy()
             self._processar_lote(seriais)
 
-        btn_ok = tk.Button(
-            win, text="▶  Bipar Lote",
-            font=("Segoe UI", 10, "bold"),
-            bg="#1a6b3a", fg="#ffffff",
-            activebackground="#28a05a", activeforeground="#ffffff",
-            relief="flat", bd=0, cursor="hand2", padx=16,
-            command=_confirmar
-        )
-        btn_ok.pack(pady=4)
+        tk.Button(win, text="▶  Bipar Lote", font=("Segoe UI", 10, "bold"),
+                  bg="#1a6b3a", fg="#ffffff", activebackground="#28a05a",
+                  activeforeground="#ffffff", relief="flat", bd=0,
+                  cursor="hand2", padx=16, command=_confirmar).pack(pady=4)
 
         entry_primeiro.focus_set()
         entry_primeiro.bind("<Tab>",    lambda e: (entry_ultimo.focus_set(), "break"))
@@ -734,7 +692,6 @@ class App(tk.Tk):
 
         self._lote_em_andamento = True
         self.entry_serial.configure(state="disabled")
-
         self.frame_resultado.configure(bg="#1a3a5c")
         self.lbl_icone_res.configure(bg="#1a3a5c", text="📦")
         self.lbl_serial_res.configure(bg="#1a3a5c", fg="#ffffff",
@@ -742,91 +699,57 @@ class App(tk.Tk):
         self.lbl_msg_res.configure(bg="#1a3a5c", fg=COR_CINZA,
                                    text="Aguarde, bipando seriais automaticamente...")
 
-        def _atualizar_progresso(i: int, serial: str, resultado_str: str):
+        def _atualizar_progresso(i, serial, resultado_str):
             serial_ecra = serial[:4] + "****" if len(serial) > 4 else serial
-            icones_prog = {
-                "ok":           "✅",
-                "ja_bipado":    "⚠️",
-                "nao_encontrado": "🔍",
-                "erro":         "💥",
-                "invalido":     "⛔",
-            }
-            self.lbl_serial_res.configure(
-                text=f"Processando lote — {i} / {total}  {icones_prog.get(resultado_str, '')}")
-            self.lbl_msg_res.configure(
-                text=f"Último: {serial_ecra}  "
-                     f"({'encontrado' if resultado_str == 'ok' else resultado_str})")
+            icones = {"ok":"✅","ja_bipado":"⚠️","nao_encontrado":"🔍","erro":"💥","invalido":"⛔"}
+            self.lbl_serial_res.configure(text=f"Processando lote — {i} / {total}  {icones.get(resultado_str,'')}")
+            self.lbl_msg_res.configure(text=f"Último: {serial_ecra}  ({'encontrado' if resultado_str=='ok' else resultado_str})")
 
-        def _registrar_com_retry(serial, resultado_str, str_hora,
-                                 loja_orig, nome_orig, origem, num_auditoria,
-                                 tentativas=3):
-            """Registra no Google Sheets com até 3 tentativas e backoff."""
+        def _registrar_com_retry(serial, resultado_str, str_hora, loja_orig, nome_orig, origem, num_auditoria, tentativas=3):
             for tentativa in range(1, tentativas + 1):
                 try:
-                    gsheets.registrar_bipagem(
-                        serial, resultado_str, str_hora,
-                        loja_orig, nome_orig, origem, num_auditoria
-                    )
+                    gsheets.registrar_bipagem(serial, resultado_str, str_hora, loja_orig, nome_orig, origem, num_auditoria)
                     return True
                 except Exception as e:
-                    print(f"[Sheets] Tentativa {tentativa}/{tentativas} falhou "
-                          f"para {serial}: {e}")
+                    print(f"[Sheets] Tentativa {tentativa}/{tentativas} falhou: {e}")
                     if tentativa < tentativas:
-                        time.sleep(1.0 * tentativa)   # backoff: 1 s, 2 s
+                        time.sleep(1.0 * tentativa)
             return False
 
         def _worker():
-            ok_count       = 0
-            nao_count      = 0
-            ja_count       = 0
-            err_count      = 0
-            invalido_count = 0
-            sheets_falhos  = []
+            ok_count = nao_count = ja_count = err_count = invalido_count = 0
+            sheets_falhos = []
 
             for i, serial in enumerate(seriais, 1):
                 key = serial.upper()
 
-                # ── Prefixo inválido ──────────────────────────────────────────
                 if self._prefixo_invalido(serial):
                     invalido_count += 1
                     self.after(0, _atualizar_progresso, i, serial, "invalido")
                     time.sleep(0.05)
                     continue
 
-                # ── Já bipado nesta sessão ────────────────────────────────────
                 if self._seriais_status.get(key) == "ok":
                     ja_count += 1
                     self.after(0, _atualizar_progresso, i, serial, "ja_bipado")
                     time.sleep(0.05)
                     continue
 
-                # ── Verifica no banco ─────────────────────────────────────────
                 try:
-                    if self._seriais_status.get(key) == "pendente":
-                        resultado_str = "ok"
-                    else:
-                        existe = db.serial_existe(serial)
-                        resultado_str = "ok" if existe else "nao_encontrado"
+                    resultado_str = "ok" if self._seriais_status.get(key) == "pendente" else ("ok" if db.serial_existe(serial) else "nao_encontrado")
                 except Exception as e:
                     err_count += 1
-                    print(f"[Lote] Erro ao consultar {serial}: {e}")
+                    print(f"[Lote] Erro: {e}")
                     self.after(0, _atualizar_progresso, i, serial, "erro")
                     time.sleep(0.05)
                     continue
 
-                # ── Timestamp único por serial ────────────────────────────────
                 str_hora_serial = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-                # ── Processa resultado ────────────────────────────────────────
                 if resultado_str == "ok":
                     ok_count += 1
-
                     self._seriais_status[key] = "ok"
-                    self._cache_bipados[key]  = {
-                        "horario":   str_hora_serial,
-                        "origem":    origem,
-                        "auditoria": num_auditoria,
-                    }
+                    self._cache_bipados[key]  = {"horario": str_hora_serial, "origem": origem, "auditoria": num_auditoria}
 
                     nome_orig, loja_orig = "N/A", "N/A"
                     if key in self._iids:
@@ -834,36 +757,20 @@ class App(tk.Tk):
                         if len(valores) >= 4:
                             nome_orig, loja_orig = valores[2], valores[3]
 
-                    ok_sheets = _registrar_com_retry(
-                        serial, resultado_str, str_hora_serial,
-                        loja_orig, nome_orig, origem, num_auditoria
-                    )
-                    if not ok_sheets:
+                    if not _registrar_com_retry(serial, resultado_str, str_hora_serial, loja_orig, nome_orig, origem, num_auditoria):
                         sheets_falhos.append(serial)
-                        print(f"[Sheets] FALHA PERMANENTE: {serial} não registrado.")
 
-                    self.after(0, self._atualizar_item_tree,
-                               key, serial, str_hora_serial, origem, num_auditoria)
-
-                    # Rate limit seguro: ~1 req/s para Google Sheets
+                    self.after(0, self._atualizar_item_tree, key, serial, str_hora_serial, origem, num_auditoria)
                     time.sleep(1.1)
-
                 else:
                     nao_count += 1
                     loja_combo = self.var_loja.get().strip()
-                    loja_orig  = (loja_combo
-                                  if loja_combo and loja_combo != "Todas as Lojas"
-                                  else "Loja não identificada")
-                    self._nao_encontrados.append({
-                        "serial":    serial,
-                        "bipado_em": datetime.now(),
-                        "loja":      loja_orig,
-                    })
+                    loja_orig  = loja_combo if loja_combo and loja_combo != "Todas as Lojas" else "Loja não identificada"
+                    self._nao_encontrados.append({"serial": serial, "bipado_em": datetime.now(), "loja": loja_orig})
                     time.sleep(0.05)
 
                 self.after(0, _atualizar_progresso, i, serial, resultado_str)
 
-            # ── Finalização ───────────────────────────────────────────────────
             self._lote_em_andamento = False
             self.after(0, self._salvar_sessao_local)
             self.after(0, self._atualizar_contador)
@@ -871,22 +778,12 @@ class App(tk.Tk):
 
             aviso_sheets = ""
             if sheets_falhos:
-                aviso_sheets = (
-                    f"\n\n⚠️  {len(sheets_falhos)} serial(is) NÃO gravados na planilha:\n"
-                    + "\n".join(sheets_falhos[:10])
-                    + ("\n..." if len(sheets_falhos) > 10 else "")
-                )
+                aviso_sheets = f"\n\n⚠️  {len(sheets_falhos)} serial(is) NÃO gravados:\n" + "\n".join(sheets_falhos[:10]) + ("\n..." if len(sheets_falhos) > 10 else "")
 
-            resumo = (
-                f"Lote concluído!\n\n"
-                f"✅  Bipados com sucesso       : {ok_count}\n"
-                f"⚠️  Já bipados anteriormente  : {ja_count}\n"
-                f"🔍  Não encontrados           : {nao_count}\n"
-                f"⛔  Códigos inválidos         : {invalido_count}\n"
-                + (f"💥  Erros                    : {err_count}\n" if err_count else "")
-                + f"\nTotal processado: {total}"
-                + aviso_sheets
-            )
+            resumo = (f"Lote concluído!\n\n✅  Bipados: {ok_count}\n⚠️  Já bipados: {ja_count}\n"
+                      f"🔍  Não encontrados: {nao_count}\n⛔  Inválidos: {invalido_count}\n"
+                      + (f"💥  Erros: {err_count}\n" if err_count else "")
+                      + f"\nTotal: {total}" + aviso_sheets)
             self.after(0, lambda: messagebox.showinfo("Lote concluído", resumo))
             self.after(0, self._resetar_painel)
             self.after(0, lambda: self.entry_serial.configure(state="normal"))
@@ -894,42 +791,29 @@ class App(tk.Tk):
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _atualizar_item_tree(self, key: str, serial: str, str_hora: str,
-                             origem: str, num_auditoria: str):
-        """Atualiza a Treeview com segurança a partir do thread principal."""
+    def _atualizar_item_tree(self, key, serial, str_hora, origem, num_auditoria):
         serial_ecra = serial[:4] + "****" if len(serial) > 4 else serial
-
         if key in self._iids:
             iid     = self._iids[key]
             valores = self.tree.item(iid, "values")
-            self.tree.item(iid,
-                           values=(ICONE_OK, valores[1], valores[2], valores[3],
-                                   str_hora, origem, num_auditoria),
-                           tags=("ok",))
+            self.tree.item(iid, values=(ICONE_OK, valores[1], valores[2], valores[3],
+                                        str_hora, origem, num_auditoria), tags=("ok",))
             self.tree.see(iid)
         else:
             iid = self.tree.insert("", "end",
                                    values=(ICONE_OK, serial_ecra, "N/A", "N/A",
-                                           str_hora, origem, num_auditoria),
-                                   tags=("ok",))
+                                           str_hora, origem, num_auditoria), tags=("ok",))
             self._iids[key] = iid
             self._ordem.append(key)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # SESSÃO LOCAL (cache)
+    # SESSÃO LOCAL
     # ──────────────────────────────────────────────────────────────────────────
 
     def _salvar_sessao_local(self):
         dados = {
             "bipados": self._cache_bipados,
-            "nao_encontrados": [
-                {
-                    "serial":    d["serial"],
-                    "bipado_em": d["bipado_em"].strftime("%Y-%m-%d %H:%M:%S"),
-                    "loja":      d.get("loja", "Desconhecida"),
-                }
-                for d in self._nao_encontrados
-            ]
+            "nao_encontrados": [{"serial": d["serial"], "bipado_em": d["bipado_em"].strftime("%Y-%m-%d %H:%M:%S"), "loja": d.get("loja", "Desconhecida")} for d in self._nao_encontrados]
         }
         try:
             with open(self.ARQUIVO_CACHE, "w", encoding="utf-8") as f:
@@ -958,27 +842,17 @@ class App(tk.Tk):
                 if key in self._iids:
                     iid     = self._iids[key]
                     valores = self.tree.item(iid, "values")
-                    self.tree.item(iid,
-                                   values=(ICONE_OK, valores[1], valores[2], valores[3],
-                                           info["horario"], info["origem"], auditoria_salva),
-                                   tags=("ok",))
+                    self.tree.item(iid, values=(ICONE_OK, valores[1], valores[2], valores[3],
+                                                info["horario"], info["origem"], auditoria_salva), tags=("ok",))
                 else:
                     serial_ecra = key[:4] + "****" if len(key) > 4 else key
                     iid = self.tree.insert("", "end",
                                            values=(ICONE_OK, serial_ecra, "N/A", "N/A",
-                                                   info["horario"], info["origem"],
-                                                   auditoria_salva),
-                                           tags=("ok",))
+                                                   info["horario"], info["origem"], auditoria_salva), tags=("ok",))
                     self._iids[key] = iid
 
             for d in cache_nao:
-                dt = datetime.strptime(d["bipado_em"], "%Y-%m-%d %H:%M:%S")
-                self._nao_encontrados.append({
-                    "serial":    d["serial"],
-                    "bipado_em": dt,
-                    "loja":      d.get("loja", "Desconhecida"),
-                })
-
+                self._nao_encontrados.append({"serial": d["serial"], "bipado_em": datetime.strptime(d["bipado_em"], "%Y-%m-%d %H:%M:%S"), "loja": d.get("loja", "Desconhecida")})
         except Exception as e:
             print(f"Erro recuperar cache: {e}")
 
@@ -988,54 +862,45 @@ class App(tk.Tk):
 
     def _finalizar_auditoria(self):
         if self._lote_em_andamento:
-            messagebox.showwarning("Lote em andamento",
-                                   "Aguarde o lote terminar antes de finalizar a auditoria.")
+            messagebox.showwarning("Lote em andamento", "Aguarde o lote terminar.")
             return
 
-        resposta = messagebox.askyesno("Finalizar Auditoria",
-                                       "Deseja FINALIZAR?\nIsso irá apagar o progresso da tela.")
-        if resposta:
-            pendentes_count = sum(
-                1 for status in self._seriais_status.values() if status == "pendente"
-            )
-            if pendentes_count > 0:
-                if messagebox.askyesno(
-                    "Relatório Pendente",
-                    f"Ainda restam {pendentes_count} seriais pendentes.\n"
-                    "Deseja gerar o relatório Excel das pendências antes de finalizar?"
-                ):
-                    self._gerar_relatorio()
+        if not messagebox.askyesno("Finalizar Auditoria", "Deseja FINALIZAR?\nIsso irá apagar o progresso da tela."):
+            return
 
-            numero_atual = self.var_num_auditoria.get()
-            if numero_atual and numero_atual != "Todas Concluídas!":
-                if numero_atual not in self._auditorias_concluidas:
-                    self._auditorias_concluidas.append(numero_atual)
-                    self._salvar_auditorias_concluidas()
+        pendentes_count = sum(1 for s in self._seriais_status.values() if s == "pendente")
+        if pendentes_count > 0:
+            if messagebox.askyesno("Relatório Pendente", f"Ainda restam {pendentes_count} seriais pendentes.\nDeseja gerar o relatório Excel antes de finalizar?"):
+                self._gerar_relatorio()
 
-            if os.path.exists(self.ARQUIVO_CACHE):
-                try:
-                    os.remove(self.ARQUIVO_CACHE)
-                except:
-                    pass
+        numero_atual = self.var_num_auditoria.get()
+        if numero_atual and numero_atual != "Todas Concluídas!" and numero_atual not in self._auditorias_concluidas:
+            self._auditorias_concluidas.append(numero_atual)
+            self._salvar_auditorias_concluidas()
 
-            messagebox.showinfo("Sucesso", "Auditoria finalizada e sistema resetado!")
-            self._seriais_status.clear()
-            self._nao_encontrados.clear()
-            self._iids.clear()
-            self._ordem.clear()
-            self._cache_bipados.clear()
-            for item in self.tree.get_children():
-                self.tree.delete(item)
+        if os.path.exists(self.ARQUIVO_CACHE):
+            try:
+                os.remove(self.ARQUIVO_CACHE)
+            except:
+                pass
 
-            self.combo_auditoria.configure(state="readonly")
-            self._atualizar_lista_auditorias()
-            self._carregar_seriais()
+        messagebox.showinfo("Sucesso", "Auditoria finalizada e sistema resetado!")
+        self._seriais_status.clear()
+        self._nao_encontrados.clear()
+        self._iids.clear()
+        self._ordem.clear()
+        self._cache_bipados.clear()
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        self.combo_auditoria.configure(state="readonly")
+        self._atualizar_lista_auditorias()
+        self._carregar_seriais()
 
     def _resetar_painel(self):
         self.frame_resultado.configure(bg="#2b2b2b")
         self.lbl_icone_res.configure(bg="#2b2b2b", text="📡")
-        self.lbl_serial_res.configure(bg="#2b2b2b", fg=COR_CINZA,
-                                      text="Aguardando bipagem...")
+        self.lbl_serial_res.configure(bg="#2b2b2b", fg=COR_CINZA, text="Aguardando bipagem...")
         self.lbl_msg_res.configure(bg="#2b2b2b", fg=COR_CINZA, text="")
         self.entry_serial.focus_set()
 
@@ -1045,39 +910,23 @@ class App(tk.Tk):
 
     def _filtrar(self, *_):
         termo            = self.var_busca.get().strip().upper()
-        loja_selecionada = self.var_loja.get().strip().upper()
-
-        if not loja_selecionada:
-            loja_selecionada = "TODAS AS LOJAS"
+        loja_selecionada = self.var_loja.get().strip().upper() or "TODAS AS LOJAS"
 
         for item in self.tree.get_children():
             self.tree.detach(item)
 
-        visiveis_pendentes = []
-        visiveis_ok        = []
+        visiveis_pendentes, visiveis_ok = [], []
 
         for serial_real in self._ordem:
             iid = self._iids.get(serial_real)
             if not iid:
                 continue
-
             valores = self.tree.item(iid, "values")
             if not valores:
                 continue
-
             loja_item = str(valores[3]).strip().upper()
-
-            match_serial = (not termo or termo in serial_real)
-            match_loja   = (
-                loja_selecionada == "TODAS AS LOJAS"
-                or loja_selecionada == loja_item
-            )
-
-            if match_serial and match_loja:
-                if self._seriais_status.get(serial_real) == "ok":
-                    visiveis_ok.append(iid)
-                else:
-                    visiveis_pendentes.append(iid)
+            if (not termo or termo in serial_real) and (loja_selecionada == "TODAS AS LOJAS" or loja_selecionada == loja_item):
+                (visiveis_ok if self._seriais_status.get(serial_real) == "ok" else visiveis_pendentes).append(iid)
 
         for iid in visiveis_pendentes + visiveis_ok:
             self.tree.reattach(iid, "", "end")
@@ -1085,10 +934,7 @@ class App(tk.Tk):
     def _atualizar_contador(self):
         total   = len(self._seriais_status)
         bipados = sum(1 for v in self._seriais_status.values() if v == "ok")
-        self.lbl_stats.configure(
-            text=f"Total: {total}  |  ✅ Bipados: {bipados}  |  "
-                 f"❌ Pendentes: {total - bipados}  |  "
-                 f"🔍 Não encontrados: {len(self._nao_encontrados)}")
+        self.lbl_stats.configure(text=f"Total: {total}  |  ✅ Bipados: {bipados}  |  ❌ Pendentes: {total - bipados}  |  🔍 Não encontrados: {len(self._nao_encontrados)}")
         self.lbl_contador.configure(text=f"{bipados}/{total} bipados")
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -1102,44 +948,25 @@ class App(tk.Tk):
         for serial_real, status in self._seriais_status.items():
             if status != "pendente":
                 continue
-
-            nome = "N/A"
-            loja = "N/A"
-
+            nome, loja = "N/A", "N/A"
             iid = self._iids.get(serial_real)
             if iid:
                 valores = self.tree.item(iid, "values")
                 if len(valores) >= 4:
-                    nome = valores[2]
-                    loja = valores[3]
-
-            if loja_selecionada != "TODAS AS LOJAS":
-                if loja.strip().upper() != loja_selecionada:
-                    continue
-
-            pendentes.append({
-                "Serial": serial_real,
-                "Nome":   nome,
-                "Loja":   loja,
-                "Status": "Não Bipado",
-            })
+                    nome, loja = valores[2], valores[3]
+            if loja_selecionada != "TODAS AS LOJAS" and loja.strip().upper() != loja_selecionada:
+                continue
+            pendentes.append({"Serial": serial_real, "Nome": nome, "Loja": loja, "Status": "Não Bipado"})
 
         if not pendentes:
-            messagebox.showinfo(
-                "Relatório",
-                "Nenhum chip pendente encontrado para a loja filtrada!"
-            )
+            messagebox.showinfo("Relatório", "Nenhum chip pendente encontrado!")
             return
 
         ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
         nome_loja = self.var_loja.get().strip().replace(" ", "_")
-
-        destino = filedialog.asksaveasfilename(
-            title="Salvar relatório",
-            defaultextension=".xlsx",
-            initialfile=f"relatorio_{nome_loja}_{ts}.xlsx",
-            filetypes=[("Excel", "*.xlsx")]
-        )
+        destino   = filedialog.asksaveasfilename(title="Salvar relatório", defaultextension=".xlsx",
+                                                  initialfile=f"relatorio_{nome_loja}_{ts}.xlsx",
+                                                  filetypes=[("Excel", "*.xlsx")])
         if not destino:
             return
 
@@ -1147,12 +974,9 @@ class App(tk.Tk):
             try:
                 caminho = rel.gerar_excel(pendentes, destino)
                 def _finalizado():
-                    abrir = messagebox.askyesno(
-                        "Relatório gerado",
-                        f"Arquivo salvo em:\n\n{caminho}\n\nDeseja abrir agora?"
-                    )
-                    if abrir and sys.platform == "win32":
-                        os.startfile(caminho)
+                    if messagebox.askyesno("Relatório gerado", f"Arquivo salvo em:\n\n{caminho}\n\nDeseja abrir agora?"):
+                        if sys.platform == "win32":
+                            os.startfile(caminho)
                 self.after(0, _finalizado)
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Erro", str(e)))
