@@ -1,0 +1,7 @@
+dist/sistemaauditoria-492914-84a65a922a10.json 
+*.json 
+dist/ 
+build/ 
+__pycache__/ 
+*.pyc 
+*.spec 
