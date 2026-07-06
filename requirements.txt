@@ -1,0 +1,2 @@
+clickhouse-driver==0.2.7
+openpyxl==3.1.2

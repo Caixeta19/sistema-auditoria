@@ -15,7 +15,7 @@ import updater
 
 # ==============================================================================
 # VERSÃO DO SISTEMA (Altere aqui toda vez que for gerar um .exe novo)
-VERSAO_SISTEMA = "1.2"
+VERSAO_SISTEMA = "1.4"
 # ==============================================================================
 
 COR_FUNDO      = "#1e1e1e"
@@ -61,12 +61,17 @@ class App(tk.Tk):
         self._inicio_digitacao                = 0.0
         self._auditorias_concluidas: list[str]= []
         self._lote_em_andamento               = False
+        self._atualizando_estoque             = False
 
         self._carregar_auditorias_concluidas()
         self._construir_ui()
         self.after(100, self._carregar_seriais)
         self.after(200, lambda: self.entry_serial.focus_set())
         updater.verificar_atualizacao(VERSAO_SISTEMA, self)
+
+        # Revalida o estoque contra a view periodicamente (a cada 20 minutos),
+        # para sistemas que ficam abertos o turno inteiro.
+        self.after(20 * 60 * 1000, self._atualizar_estoque_automatico)
 
         
     def centralizar_janela(self, largura=1150, altura=660):
@@ -319,6 +324,16 @@ class App(tk.Tk):
         )
         btn_lote.pack(side="right", padx=12, pady=5)
 
+        btn_atualizar = tk.Button(
+            frame_rodape, text="🔄  Atualizar Estoque",
+            font=("Segoe UI", 9, "bold"),
+            bg="#555555", fg="#ffffff",
+            activebackground="#787878", activeforeground="#ffffff",
+            relief="flat", bd=0, cursor="hand2", padx=12,
+            command=self._atualizar_estoque
+        )
+        btn_atualizar.pack(side="right", padx=12, pady=5)
+
     # ──────────────────────────────────────────────────────────────────────────
     # CARREGAMENTO DE SERIAIS
     # ──────────────────────────────────────────────────────────────────────────
@@ -382,6 +397,118 @@ class App(tk.Tk):
                          values=("💥", f"Erro: {erro[:120]}", "", "", "", "", ""),
                          tags=("pendente",))
         self.lbl_conexao.configure(text=f"⬤  Erro: {erro[:60]}", fg=COR_VERMELHO)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ATUALIZAÇÃO DE ESTOQUE (revalida a lista contra a view sem perder progresso)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _atualizar_estoque_automatico(self):
+        """Chamado periodicamente (a cada 20 min) para revalidar a lista contra
+        a view, sem interromper o usuário com pop-ups desnecessários."""
+        self._atualizar_estoque(silencioso=True)
+        self.after(20 * 60 * 1000, self._atualizar_estoque_automatico)
+
+    def _atualizar_estoque(self, silencioso: bool = False):
+        if self._lote_em_andamento:
+            if not silencioso:
+                messagebox.showwarning("Lote em andamento",
+                                       "Aguarde o lote atual terminar antes de atualizar o estoque.")
+            return
+
+        if self._atualizando_estoque:
+            return
+
+        self._atualizando_estoque = True
+        self.lbl_conexao.configure(text="⬤  Atualizando estoque...", fg=COR_CINZA)
+        threading.Thread(target=self._thread_atualizar_estoque,
+                         args=(silencioso,), daemon=True).start()
+
+    def _thread_atualizar_estoque(self, silencioso: bool):
+        try:
+            dados = db.carregar_todos_seriais()
+            self.after(0, self._reconciliar_estoque, dados, silencioso)
+        except Exception as e:
+            self.after(0, self._erro_atualizar_estoque, str(e))
+
+    def _erro_atualizar_estoque(self, erro: str):
+        self._atualizando_estoque = False
+        self.lbl_conexao.configure(text=f"⬤  Erro ao atualizar: {erro[:60]}", fg=COR_VERMELHO)
+        messagebox.showerror("Erro ao atualizar estoque",
+                             f"Não foi possível atualizar o estoque.\n\nDetalhe técnico:\n{erro}")
+
+    def _reconciliar_estoque(self, dados: list, silencioso: bool):
+        """Compara a lista atual com o que veio fresco do ClickHouse:
+        - Remove da tela os PENDENTES que saíram da view (não precisam mais ser bipados)
+        - Adiciona os seriais novos que entraram na view
+        - Atualiza loja/nome de quem já existia
+        - NUNCA remove quem já foi bipado nesta sessão (preserva o progresso)
+        """
+        novos_seriais = {}
+        todas_as_lojas = set()
+        for serial, loja, nome in dados:
+            key = serial.upper()
+            novos_seriais[key] = (serial, loja.strip(), nome)
+            todas_as_lojas.add(loja.strip())
+
+        removidos    = 0
+        adicionados  = 0
+
+        for key in list(self._seriais_status.keys()):
+            if key not in novos_seriais and self._seriais_status.get(key) == "pendente":
+                iid = self._iids.pop(key, None)
+                if iid is not None:
+                    try:
+                        self.tree.delete(iid)
+                    except tk.TclError:
+                        pass
+                if key in self._ordem:
+                    self._ordem.remove(key)
+                del self._seriais_status[key]
+                removidos += 1
+
+        for key, (serial, loja, nome) in novos_seriais.items():
+            if key not in self._seriais_status:
+                self._seriais_status[key] = "pendente"
+                serial_ecra = serial[:4] + "****" if len(serial) > 4 else serial
+                iid = self.tree.insert("", "end",
+                                       values=(ICONE_NAO, serial_ecra, nome, loja, "", "", ""),
+                                       tags=("pendente",))
+                self._iids[key] = iid
+                self._ordem.append(key)
+                adicionados += 1
+            else:
+                iid = self._iids.get(key)
+                if iid is not None:
+                    valores = list(self.tree.item(iid, "values"))
+                    if len(valores) >= 4:
+                        valores[2], valores[3] = nome, loja
+                        self.tree.item(iid, values=tuple(valores))
+
+        loja_atual = self.var_loja.get()
+        lista_lojas = ["Todas as Lojas"] + sorted(list(todas_as_lojas))
+        self.combo_loja.configure(values=lista_lojas)
+        if loja_atual in lista_lojas:
+            self.var_loja.set(loja_atual)
+        else:
+            self.combo_loja.current(0)
+
+        self.lbl_conexao.configure(text="⬤  ClickHouse: conectado", fg=COR_VERDE)
+        self._atualizando_estoque = False
+
+        self._atualizar_contador()
+        self._salvar_sessao_local()
+        self._filtrar()
+
+        if not silencioso:
+            if removidos or adicionados:
+                messagebox.showinfo(
+                    "Estoque atualizado",
+                    f"Estoque atualizado com sucesso!\n\n"
+                    f"➕  {adicionados} serial(is) novo(s) na base\n"
+                    f"➖  {removidos} serial(is) que saíram da base (removido(s) da lista de pendentes)"
+                )
+            else:
+                messagebox.showinfo("Estoque atualizado", "Estoque já estava atualizado — nenhuma mudança encontrada.")
 
     # ──────────────────────────────────────────────────────────────────────────
     # VALIDAÇÃO DE PREFIXO INVÁLIDO
@@ -977,8 +1104,6 @@ class App(tk.Tk):
 
         threading.Thread(target=_gerar, daemon=True).start()
 
-
-# ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app = App()
     app.mainloop()
