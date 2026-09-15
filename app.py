@@ -15,7 +15,7 @@ import updater
 
 # ==============================================================================
 # VERSÃO DO SISTEMA (Altere aqui toda vez que for gerar um .exe novo)
-VERSAO_SISTEMA = "1.4"
+VERSAO_SISTEMA = "1.4.01"
 # ==============================================================================
 
 COR_FUNDO      = "#1e1e1e"
@@ -32,6 +32,11 @@ ICONE_OK      = "✅"
 ICONE_NAO     = "❌"
 ICONE_BIPANDO = "⏳"
 
+# Prefixos numéricos inválidos. Essa regra existe para filtrar códigos de
+# chip/recarga que sabidamente não são seriais válidos (ex: lotes de teste,
+# faixas descartadas, etc). Ela SÓ se aplica a seriais que começam com
+# dígito — seriais alfanuméricos de produtos (Samsung, Apple, etc.) nunca
+# passam por essa checagem, ver _prefixo_invalido() abaixo.
 PREFIXOS_NUMERICOS_INVALIDOS = ("79", "78", "2202", "080","00")
 
 
@@ -360,7 +365,7 @@ class App(tk.Tk):
         for item in self.tree.get_children():
             self.tree.delete(item)
         self._iids            = {}
-        self._ordem           = []
+        self._ordem            = []
         self._seriais_status  = {}
         todas_as_lojas        = set()
 
@@ -515,11 +520,27 @@ class App(tk.Tk):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _prefixo_invalido(self, serial: str) -> bool:
+        """Retorna True quando o serial deve ser bloqueado antes mesmo de
+        consultar o banco.
+
+        Regras:
+        - Serial vazio: nunca é bloqueado aqui (tratado em outro ponto do fluxo).
+        - Serial ALFANUMÉRICO (começa com letra): SEMPRE aceito neste filtro.
+          Cobre seriais de produtos como smartphones, smartwatches, AirPods,
+          carregadores, speakers etc. (ex: "RFGL429412R", "M2C9LJT2Y1",
+          "C4H61970T52Q8YQA6") — esses nunca batem nos prefixos abaixo, que
+          foram desenhados só para chip/recarga.
+        - Serial NUMÉRICO (começa com dígito): passa pela checagem de
+          prefixos numéricos inválidos, específica de chip/recarga.
+        """
         if not serial:
             return False
 
+        # Seriais alfanuméricos de produtos (Samsung, Apple, etc.) não são
+        # mais bloqueados aqui — só os seriais numéricos de chip/recarga
+        # passam pela lista de prefixos inválidos abaixo.
         if serial[0].isalpha():
-            return True
+            return False
 
         s = serial.upper()
         for p in PREFIXOS_NUMERICOS_INVALIDOS:
