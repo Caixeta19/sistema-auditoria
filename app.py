@@ -16,7 +16,7 @@ import updater
 
 # ==============================================================================
 # VERSÃO DO SISTEMA (Altere aqui toda vez que for gerar um .exe novo)
-VERSAO_SISTEMA = "1.4.01"
+VERSAO_SISTEMA = "1.4.02"
 # ==============================================================================
 
 COR_FUNDO      = "#1e1e1e"
