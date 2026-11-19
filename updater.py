@@ -7,8 +7,10 @@ se existir, baixa e substitui o .exe automaticamente.
 Como publicar uma atualização:
     1. Gere o novo .exe com PyInstaller
     2. Vá em github.com/Caixeta19/sistema-auditoria/releases/new
-    3. Crie uma release com a tag "v1.3" (ou a versão nova)
-    4. Faça upload do "Sistema de Auditoria.exe" como asset
+    3. Crie uma release com a tag "v1.4.02" (ou a versão nova, igual a
+       VERSAO_SISTEMA em app.py)
+    4. Faça upload do .exe como asset com o nome exato "SistemaAuditoria.exe"
+       (sem espaços — deve bater com NOME_EXE abaixo, senão o updater ignora)
     5. Publique — todas as máquinas detectam na próxima abertura
 """
 
