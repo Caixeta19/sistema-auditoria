@@ -5,6 +5,7 @@ import sys
 import os
 import time
 import json
+import re
 from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 import db
@@ -38,6 +39,12 @@ ICONE_BIPANDO = "⏳"
 # dígito — seriais alfanuméricos de produtos (Samsung, Apple, etc.) nunca
 # passam por essa checagem, ver _prefixo_invalido() abaixo.
 PREFIXOS_NUMERICOS_INVALIDOS = ("79", "78", "2202", "080","00")
+
+# Seriais alfanuméricos (começam com letra) só são válidos se tiverem de 10 a
+# 15 caracteres, apenas letras e dígitos (ex: "SH29792QTF3", "SFDQRYXQKFL").
+# Seriais que começam com letra e NÃO seguem esse padrão (curtos demais,
+# longos demais, com espaço, hífen etc.) continuam sendo "código errado".
+REGEX_SERIAL_ALFANUMERICO = re.compile(r"^[A-Za-z0-9]{10,15}$")
 
 
 class App(tk.Tk):
@@ -525,22 +532,23 @@ class App(tk.Tk):
 
         Regras:
         - Serial vazio: nunca é bloqueado aqui (tratado em outro ponto do fluxo).
-        - Serial ALFANUMÉRICO (começa com letra): SEMPRE aceito neste filtro.
-          Cobre seriais de produtos como smartphones, smartwatches, AirPods,
-          carregadores, speakers etc. (ex: "RFGL429412R", "M2C9LJT2Y1",
-          "C4H61970T52Q8YQA6") — esses nunca batem nos prefixos abaixo, que
-          foram desenhados só para chip/recarga.
+        - Serial ALFANUMÉRICO (começa com letra): aceito somente se casar com
+          REGEX_SERIAL_ALFANUMERICO (10 a 15 letras/dígitos). Cobre seriais de
+          produtos como smartphones, smartwatches, carregadores, speakers etc.
+          (ex: "RFGL429412R", "M2C9LJT2Y1", "SH29792QTF3"). Não passa pelos
+          prefixos abaixo, que foram desenhados só para chip/recarga.
         - Serial NUMÉRICO (começa com dígito): passa pela checagem de
           prefixos numéricos inválidos, específica de chip/recarga.
         """
         if not serial:
             return False
 
-        # Seriais alfanuméricos de produtos (Samsung, Apple, etc.) não são
-        # mais bloqueados aqui — só os seriais numéricos de chip/recarga
+        # Seriais alfanuméricos de produtos (Samsung, Apple, etc.) são válidos
+        # se seguirem o padrão de 10 a 15 caracteres; os demais que começam
+        # com letra são código errado. Só os seriais numéricos de chip/recarga
         # passam pela lista de prefixos inválidos abaixo.
         if serial[0].isalpha():
-            return False
+            return not REGEX_SERIAL_ALFANUMERICO.fullmatch(serial)
 
         s = serial.upper()
         for p in PREFIXOS_NUMERICOS_INVALIDOS:

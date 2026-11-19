@@ -40,7 +40,7 @@ def serial_existe(serial: str) -> bool:
 
     client = _conectar()
     resultado = client.query(
-        f'SELECT 1 FROM `{view}` WHERE `{coluna}` = %(s)s LIMIT 1',
+        f'SELECT 1 FROM `{view}` WHERE upper(`{coluna}`) = upper(%(s)s) LIMIT 1',
         parameters={"s": serial}
     )
     return len(resultado.result_rows) > 0
